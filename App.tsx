@@ -1,17 +1,34 @@
 import 'react-native-gesture-handler';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
-import { Text } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import { BlurView } from 'expo-blur';
+import Animated, {
+  useSharedValue, withSpring, useAnimatedStyle,
+} from 'react-native-reanimated';
+import {
+  useFonts,
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from '@expo-google-fonts/inter';
+import { SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
+
+import { ThemeProvider, Colors } from './src/theme';
 import { analyticsService } from './src/services/AnalyticsService';
 import { notificationService } from './src/services/NotificationService';
-import { useAppStore } from './src/store/useAppStore';
+import EyeHealthProvider from './src/providers/EyeHealthProvider';
+import { breakManager } from './src/interventions/BreakManager';
 import HomeScreen from './src/screens/HomeScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import ExercisesScreen from './src/screens/ExercisesScreen';
-import SettingsScreen from './src/screens/SettingsScreen';
+import EyeHealthSettings from './src/screens/EyeHealthSettings';
+
+// ─── Navigation setup ─────────────────────────────────────────────────────────
 
 const Tab = createBottomTabNavigator();
 
@@ -19,41 +36,167 @@ const NavTheme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    background: '#111827',
-    card: '#1f2937',
-    border: '#374151',
-    text: '#f9fafb',
-    primary: '#6366f1',
-    notification: '#ef4444',
+    background:   Colors.background,
+    card:         'transparent',   // custom tab bar handles its own bg
+    border:       'transparent',
+    text:         Colors.textPrimary,
+    primary:      Colors.accent,
+    notification: Colors.danger,
   },
 };
 
-function TabIcon({ icon, focused }: { icon: string; focused: boolean }) {
-  return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>{icon}</Text>;
+// ─── Custom blur tab bar ──────────────────────────────────────────────────────
+
+const TAB_CONFIG = [
+  { name: 'Home',      icon: '👁️',  label: 'Monitor'   },
+  { name: 'Dashboard', icon: '📊',  label: 'Analytics' },
+  { name: 'Exercises', icon: '🏋️', label: 'Exercises'  },
+  { name: 'Settings',  icon: '⚙️',  label: 'Settings'  },
+];
+
+function TabItem({
+  icon, label, focused, onPress,
+}: { icon: string; label: string; focused: boolean; onPress: () => void }) {
+  const scale = useSharedValue(1);
+
+  const handlePress = () => {
+    scale.value = withSpring(0.88, { damping: 12, stiffness: 300 }, () => {
+      scale.value = withSpring(1, { damping: 14, stiffness: 200 });
+    });
+    onPress();
+  };
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Pressable onPress={handlePress} style={tabStyles.item}>
+      <Animated.View style={[tabStyles.itemInner, animStyle]}>
+        {/* Active indicator dot */}
+        {focused && (
+          <View style={[tabStyles.activeDot, { backgroundColor: Colors.accent }]} />
+        )}
+        <Text style={[tabStyles.icon, { opacity: focused ? 1 : 0.4 }]}>{icon}</Text>
+        <Text style={[
+          tabStyles.label,
+          { color: focused ? Colors.accent : Colors.textTertiary },
+        ]}>
+          {label}
+        </Text>
+      </Animated.View>
+    </Pressable>
+  );
 }
 
+function CustomTabBar({ state, navigation }: BottomTabBarProps) {
+  return (
+    <View style={tabStyles.container} pointerEvents="box-none">
+      <BlurView intensity={72} tint="dark" style={tabStyles.blur}>
+        <View style={tabStyles.inner}>
+          {state.routes.map((route, index) => {
+            const cfg     = TAB_CONFIG[index];
+            const focused = state.index === index;
+
+            return (
+              <TabItem
+                key={route.key}
+                icon={cfg?.icon ?? '•'}
+                label={cfg?.label ?? route.name}
+                focused={focused}
+                onPress={() => navigation.navigate(route.name)}
+              />
+            );
+          })}
+        </View>
+      </BlurView>
+    </View>
+  );
+}
+
+const tabStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 12,
+    paddingBottom: 24,
+  },
+  blur: {
+    borderRadius: 28,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  inner: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  item: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  itemInner: {
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+  activeDot: {
+    position: 'absolute',
+    top: -6,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+  icon:  { fontSize: 22 },
+  label: { fontSize: 10, fontWeight: '600', letterSpacing: 0.2 },
+});
+
+// ─── Navigator ────────────────────────────────────────────────────────────────
+
+function Navigator() {
+  return (
+    <Tab.Navigator
+      tabBar={(props) => <CustomTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
+    >
+      <Tab.Screen name="Home"      component={HomeScreen}       />
+      <Tab.Screen name="Dashboard" component={DashboardScreen}  />
+      <Tab.Screen name="Exercises" component={ExercisesScreen}  />
+      <Tab.Screen name="Settings"  component={EyeHealthSettings} />
+    </Tab.Navigator>
+  );
+}
+
+// ─── App root ─────────────────────────────────────────────────────────────────
+
 export default function App() {
-  const setTwentyTwenty = useAppStore((s) => s.setTwentyTwenty);
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    SpaceMono_400Regular,
+  });
 
   useEffect(() => {
     analyticsService.load();
 
-    // Request notification permissions and schedule first reminders
     notificationService.requestPermissions().then((granted) => {
       if (granted) notificationService.scheduleBreakReminders(20);
     });
 
-    // When user taps a notification, trigger 20-20-20 in-app
     const responseSub = notificationService.addNotificationResponseListener((response) => {
       const data = response.notification.request.content.data;
       if (data?.type === 'blink_reminder') {
-        setTwentyTwenty(true);
-        // Reschedule next batch from now
+        breakManager.triggerTwentyTwenty();
         notificationService.rescheduleFromNow(20);
       }
     });
 
-    // When notification arrives while app is open, reschedule (in-app overlay handles it)
     const receivedSub = notificationService.addNotificationReceivedListener(() => {
       notificationService.rescheduleFromNow(20);
     });
@@ -65,48 +208,18 @@ export default function App() {
     };
   }, []);
 
+  if (!fontsLoaded) {
+    return <View style={{ flex: 1, backgroundColor: Colors.background }} />;
+  }
+
   return (
-    <NavigationContainer theme={NavTheme}>
-      <StatusBar style="light" />
-      <Tab.Navigator
-        screenOptions={{
-          headerShown: false,
-          tabBarStyle: {
-            backgroundColor: '#1f2937',
-            borderTopColor: '#374151',
-            borderTopWidth: 1,
-            height: 70,
-            paddingBottom: 10,
-          },
-          tabBarActiveTintColor: '#818cf8',
-          tabBarInactiveTintColor: '#6b7280',
-          tabBarLabelStyle: {
-            fontSize: 11,
-            fontWeight: '600',
-          },
-        }}
-      >
-        <Tab.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ tabBarIcon: ({ focused }) => <TabIcon icon="👁️" focused={focused} /> }}
-        />
-        <Tab.Screen
-          name="Dashboard"
-          component={DashboardScreen}
-          options={{ tabBarIcon: ({ focused }) => <TabIcon icon="📊" focused={focused} /> }}
-        />
-        <Tab.Screen
-          name="Exercises"
-          component={ExercisesScreen}
-          options={{ tabBarIcon: ({ focused }) => <TabIcon icon="🏋️" focused={focused} /> }}
-        />
-        <Tab.Screen
-          name="Settings"
-          component={SettingsScreen}
-          options={{ tabBarIcon: ({ focused }) => <TabIcon icon="⚙️" focused={focused} /> }}
-        />
-      </Tab.Navigator>
-    </NavigationContainer>
+    <ThemeProvider>
+      <EyeHealthProvider>
+        <NavigationContainer theme={NavTheme}>
+          <StatusBar style="light" />
+          <Navigator />
+        </NavigationContainer>
+      </EyeHealthProvider>
+    </ThemeProvider>
   );
 }

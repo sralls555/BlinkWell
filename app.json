@@ -11,11 +11,18 @@
       "resizeMode": "contain",
       "backgroundColor": "#111827"
     },
+    "newArchEnabled": false,
     "plugins": [
-      "expo-notifications"
+      "expo-notifications",
+      "react-native-vision-camera",
+      "expo-font",
+      "./plugins/withForegroundService"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "BlinkWell uses the front camera to detect your blink rate and protect your eyes from strain. No video is stored or uploaded."
+      }
     },
     "android": {
       "adaptiveIcon": {

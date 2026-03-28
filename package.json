@@ -9,11 +9,16 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/space-mono": "^0.4.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/bottom-tabs": "^7.15.7",
     "@react-navigation/native": "^7.2.0",
+    "@supersami/rn-foreground-service": "^2.2.5",
     "expo": "~55.0.8",
     "expo-background-fetch": "~55.0.10",
+    "expo-blur": "~55.0.10",
+    "expo-font": "~55.0.4",
     "expo-haptics": "~55.0.9",
     "expo-keep-awake": "~55.0.4",
     "expo-notifications": "~55.0.13",
@@ -22,14 +27,19 @@
     "react": "19.2.0",
     "react-native": "0.83.2",
     "react-native-gesture-handler": "^2.30.0",
+    "react-native-permissions": "^5.5.1",
     "react-native-reanimated": "^4.3.0",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
     "react-native-svg": "15.15.3",
+    "react-native-vision-camera": "^4.7.3",
+    "react-native-vision-camera-face-detector": "^1.10.1",
+    "react-native-worklets-core": "^1.6.3",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "sharp": "^0.34.5",
     "typescript": "~5.9.2"
   },
   "private": true
