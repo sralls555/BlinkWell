@@ -1,5 +1,5 @@
 /**
- * Expo config plugin — two jobs:
+ * Expo config plugin — three jobs:
  *
  * 1. Force newArchEnabled=false in gradle.properties
  *    (react-native-worklets-core and @supersami/rn-foreground-service are
@@ -9,8 +9,16 @@
  *    • FOREGROUND_SERVICE + FOREGROUND_SERVICE_DATA_SYNC permissions
  *    • POST_NOTIFICATIONS permission (Android 13+)
  *    • ForegroundService + ForegroundServiceTask <service> declarations
+ *
+ * 3. Patch @supersami/rn-foreground-service Java source for RN 0.83.2:
+ *    • Remove stale `import com.facebook.react.bridge.JavaScriptModule;`
+ *      from ForegroundServicePackage.java (removed from RN bridge in RN 0.65)
+ *    This runs during expo prebuild (via withDangerousMod), which always
+ *    executes on EAS Build regardless of node_modules caching.
  */
-const { withAndroidManifest, withGradleProperties } = require('@expo/config-plugins');
+const fs = require('fs');
+const path = require('path');
+const { withAndroidManifest, withGradleProperties, withDangerousMod } = require('@expo/config-plugins');
 
 // ─── gradle.properties patch ──────────────────────────────────────────────────
 
@@ -74,9 +82,54 @@ const withForegroundServiceManifest = (config) =>
     return mod;
   });
 
-// ─── Compose both modifiers ───────────────────────────────────────────────────
+// ─── Java source patch (runs during expo prebuild) ────────────────────────────
+
+const withPatchedForegroundServiceJava = (config) =>
+  withDangerousMod(config, [
+    'android',
+    async (mod) => {
+      const javaFile = path.join(
+        mod.modRequest.projectRoot,
+        'node_modules',
+        '@supersami',
+        'rn-foreground-service',
+        'android',
+        'src',
+        'main',
+        'java',
+        'com',
+        'supersami',
+        'foregroundservice',
+        'ForegroundServicePackage.java'
+      );
+
+      if (!fs.existsSync(javaFile)) {
+        console.warn('[withForegroundService] ForegroundServicePackage.java not found, skipping patch');
+        return mod;
+      }
+
+      const original = fs.readFileSync(javaFile, 'utf8');
+      const patched = original.replace(
+        /^import com\.facebook\.react\.bridge\.JavaScriptModule;\n?/m,
+        ''
+      );
+
+      if (original !== patched) {
+        fs.writeFileSync(javaFile, patched, 'utf8');
+        console.log('[withForegroundService] Patched ForegroundServicePackage.java — removed JavaScriptModule import');
+      }
+
+      return mod;
+    },
+  ]);
+
+// ─── Compose all modifiers ────────────────────────────────────────────────────
 
 const withForegroundService = (config) =>
-  withForegroundServiceManifest(withOldArch(config));
+  withPatchedForegroundServiceJava(
+    withForegroundServiceManifest(
+      withOldArch(config)
+    )
+  );
 
 module.exports = withForegroundService;
